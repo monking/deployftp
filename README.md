@@ -24,13 +24,9 @@ You'll be prompted for all relevant information. If you choose to let
 access to the directory where you installed deployftp will be able to read your
 password.
 
-You'll also be asked for the "Assets path." This defaults to
-`*/wp-content/uploads/*`, a pattern to find the uploads folder in a WordPress
-site, but you can change it to any path. This is useful if your Git working
-copy is ignoring an assets, uploads, or media directory that you want to
-upload. The path is really a pattern compatible with the `find` utility, which
-will match all the files that you want to upload apart from the Git tracked
-files.
+You'll also be asked for the **assets path**, which is used in a `find -path`
+search to match the contents of a directory your Git working copy is ignoring.
+The default (`*/wp-content/uploads/*`) looks for a WordPress uploads directory.
 
 Caveats
 -------

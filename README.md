@@ -32,4 +32,8 @@ Caveats
 -------
 
 deployftp does not create any backups of your remote data. It is suggested that
-you archive your live site before deploying. 
+you archive any files that will be overwritten by deploying.
+
+Please test your setup by supplying a temporary remote webroot path. When you're satisfied
+that everything was delivered correctly to that directory, you can edit the
+`cases/<case_name>ftp_config` file to define `ftp_root` as the real webroot.

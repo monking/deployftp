@@ -1,0 +1,210 @@
+#!/bin/bash
+SAVEIFS=$IFS
+CR_IFS=$(echo -en "\r\b")
+NL_IFS=$'\n'
+IFS=$CR_IFS
+
+wd=`pwd`
+cases_dir=$(dirname $0)/../cases
+cd $cases_dir
+read -ep "Case name: " case
+if [ -z "$case" ]; then
+	echo "You must give a case name to deploy"
+	exit 0
+fi
+case_dir=$cases_dir/${case/\//}
+cd $wd
+
+ftp_user=""
+ftp_pass=""
+ftp_host=""
+deployed_commit=""
+if [ -e $case_dir/ftp_config ]; then
+	source $case_dir/ftp_config
+fi
+if [ -z "$ftp_host" ]; then
+	read -p "FTP host: " ftp_host
+else
+	echo "FTP host: $ftp_host"
+fi
+if [ -z "$ftp_user" ]; then
+	read -p "FTP user: " ftp_user
+else
+	echo "FTP user: $ftp_user"
+fi
+if [ -z "$ftp_pass" ]; then
+	read -sp "FTP password: " ftp_pass
+	if [ -z "$save_pass" ]; then
+		echo -en "\n"
+		read -p "save password? [Y/n]: " save_pass
+		if [ -z "$save_pass" ]; then save_pass=y; fi
+	fi
+fi
+if [ -z "$ftp_root" ]; then
+	read -p "FTP root: " ftp_root
+else
+	echo "FTP root: $ftp_root"
+fi
+if [ -z "$local_root" ]; then
+	read -ep "Local root [$wd]: " local_root
+	if [ -z "$local_root" ]; then local_root=$wd; fi
+else
+	echo "Local root: $local_root"
+fi
+if [ -z "$deployed_commit" ]; then
+	read -p "Currently deployed tag/commit: " deployed_commit
+else
+	echo "Currently deployed tag/commit: $deployed_commit"
+fi
+if [ -z "$assets_pattern" ]; then
+	assets_pattern="*/wp-content/uploads/*"
+	read -p "Assets path [$assets_pattern]: " other_pattern
+	if [ -n "$other_pattern" ]; then assets_pattern=$other_pattern; fi
+else
+	echo "Assets path: $assets_pattern"
+fi
+
+cd $local_root
+
+IFS=$SAVEIFS
+for new_commit in $(git tag); do echo -n ""; done
+IFS=$CR_IFS
+read -p "Deploy commit [$new_commit]: " other_commit
+if [ -n "$other_commit" ]; then new_commit=$other_commit; fi
+if [ -z "$new_commit" ]; then
+	echo "You must specify a commit to deploy"
+	exit 0
+fi
+if [ "$new_commit" = "$deployed_commit" ]; then
+	read -p "The commit you're pushing is already live. Continue? [y/N] " push_anyway
+	case $push_anyway in
+		[yY]* ) echo "You're the boss";;
+		* ) echo aborting; exit;;
+	esac
+fi
+function push_ftp_list {
+	local input_type script file wd
+	script=$cases_dir/tmp.deploy.ftp
+	script_part_dirs=$cases_dir/tmp.deploy.dirs.ftp
+	script_part_files=$cases_dir/tmp.deploy.files.ftp
+	deploy_preview=$cases_dir/tmp.deploy.preview
+
+	input_type=$1
+	list=$2
+
+	echo -n "" > $script
+	echo -n "" > $script_part_files
+	echo -n "" > $script_part_dirs
+	echo -e "The following files will be pushed to $ftp_root\n" > $deploy_preview
+
+	IFS=$NL_IFS
+	for line in $(cat $list); do
+		echo -n .
+		line="$(echo $line | sed 's/\(^\|\s\).\//\1/')"
+		if [ "$input_type" = "sum" ]; then
+			if [ -z "$(echo $line | sed 's/^>\s\+.*//')" ]; then
+				file="$(echo $line | sed 's/^>\s\+\(.*\) SUM(.*)$/\1/')"
+			fi
+		elif [ "$input_type" = "git" ]; then
+			if [ -n "$(echo $line | sed 's/^D\s\+.*//')" ]; then
+				file="$(echo $line | sed 's/^[A-Z]\s\+\(.*\)$/\1/')"
+			else
+				continue
+			fi
+		else
+			file=$line
+		fi
+		if [ -n "$file" ]; then
+			echo $file >> $deploy_preview
+			echo "put $local_root/$file $ftp_root/$file" >> $script_part_files
+			dirname="$(dirname $file)"
+			echo "mkdir $ftp_root/$dirname" >> $script_part_dirs
+			while true; do
+				dirname="$(dirname $dirname)"
+				if [ -n "$dirname" -a "$dirname" != "/" -a "$dirname" != "." -a "$dirname" != "." ]; then
+					echo "mkdir $ftp_root/$dirname" >> $script_part_dirs
+				else
+					break
+				fi
+			done
+		fi
+	done
+	IFS=CR_IFS
+
+	less $deploy_preview
+	read -p "push files? [y/N]: " deploy
+	if [  y = "$deploy" ]; then
+		echo "open $ftp_host" >> $script
+		echo "quote USER $ftp_user" >> $script
+		echo "quote PASS $ftp_pass" >> $script
+		cat $script_part_dirs | sort -u >> $script
+		cat $script_part_files >> $script
+		echo "quit" >> $script
+		ftp -nv < $script
+	fi
+	rm $script
+	rm $script_part_files
+	rm $script_part_dirs
+	rm $deploy_preview
+}
+
+read -p "push assets to $ftp_root/$(sed 's/^\*\///' <<< $assets_pattern)? [y/N]: " push_assets
+if [  y = "$push_assets" ]; then
+	echo "getting assets list"
+	assets=$(find . -path $assets_pattern -type f)
+	echo "getting asset checksums"
+	sumfile=$case_dir/assets_sums
+	tmp_sumfile=$cases_dir/tmp.assets_sums
+	sum_diff=$cases_dir/tmp.assets_sum_diff
+	echo -n "" > $tmp_sumfile
+	IFS=$SAVEIFS
+	for file in $(echo $assets); do
+		echo "$file SUM($(sum $file))" >> "$tmp_sumfile"
+	done
+	IFS=$CR_IFS
+	echo "comparing asset checksums from last deploy"
+	diff "$sumfile" "$tmp_sumfile" > $sum_diff
+	if [ $(stat -c%s $sum_diff) > 0 ]; then
+		push_ftp_list sum $sum_diff
+	else
+		echo "no changed assets"
+	fi
+	read -p "Update asset diff? [y/N]: " push_successful
+	if [  y = "$push_successful" ]; then
+		mv "$tmp_sumfile" "$sumfile"
+	fi
+fi
+echo "getting Git diff"
+git_diff=$cases_dir/tmp.deploy.git.diff
+git checkout $new_commit
+git diff $deployed_commit $new_commit --name-status > $git_diff
+if [ $(stat -c%s $git_diff) > 0 ]; then
+	read -p "continue deploying $new_commit over $deployed_commit? [y/N]: " push
+	if [ y = "$push" ]; then
+		# echo "pulling remote versions of changed files (FIXME: stub)"
+		# echo "packing remote_backup.before.$new_commit.tar.gz (FIXME: stub)"
+		echo -n "building FTP script"
+		push_ftp_list git $git_diff
+		read -p "Mark commit $new_commit as deployed? [Y/n]: " deploy_successful
+		case $deploy_successfull in
+			[nN]* ) ;;
+			* ) deployed_commit=$new_commit;;
+		esac
+	fi
+fi
+echo "Complete"
+
+if [ ! y = "$save_pass" ]; then ftp_pass=""; fi
+
+cat > $case_dir/ftp_config <<END_CONFIG
+ftp_host="$ftp_host"
+ftp_user="$ftp_user"
+ftp_pass="$ftp_pass"
+ftp_root="$ftp_root"
+deployed_commit="$deployed_commit"
+local_root="$local_root"
+save_pass="$save_pass"
+assets_pattern="$assets_pattern"
+END_CONFIG
+
+IFS=$SAVEIFS

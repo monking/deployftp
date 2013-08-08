@@ -13,6 +13,7 @@ if [ -z "$case" ]; then
 	exit 0
 fi
 case_dir=$cases_dir/${case/\//}
+mkdir -p $case_dir
 cd $wd
 
 ftp_user=""
@@ -84,10 +85,10 @@ if [ "$new_commit" = "$deployed_commit" ]; then
 fi
 function push_ftp_list {
 	local input_type script file wd
-	script=$cases_dir/tmp.deploy.ftp
-	script_part_dirs=$cases_dir/tmp.deploy.dirs.ftp
-	script_part_files=$cases_dir/tmp.deploy.files.ftp
-	deploy_preview=$cases_dir/tmp.deploy.preview
+	script=$case_dir/tmp.deploy.ftp
+	script_part_dirs=$case_dir/tmp.deploy.dirs.ftp
+	script_part_files=$case_dir/tmp.deploy.files.ftp
+	deploy_preview=$case_dir/tmp.deploy.preview
 
 	input_type=$1
 	list=$2
@@ -154,8 +155,8 @@ if [  y = "$push_assets" ]; then
 	assets=$(find . -path $assets_pattern -type f)
 	echo "getting asset checksums"
 	sumfile=$case_dir/assets_sums
-	tmp_sumfile=$cases_dir/tmp.assets_sums
-	sum_diff=$cases_dir/tmp.assets_sum_diff
+	tmp_sumfile=$case_dir/tmp.assets_sums
+	sum_diff=$case_dir/tmp.assets_sum_diff
 	echo -n "" > $tmp_sumfile
 	IFS=$SAVEIFS
 	for file in $(echo $assets); do
@@ -175,7 +176,7 @@ if [  y = "$push_assets" ]; then
 	fi
 fi
 echo "getting Git diff"
-git_diff=$cases_dir/tmp.deploy.git.diff
+git_diff=$case_dir/tmp.deploy.git.diff
 git checkout $new_commit
 git diff $deployed_commit $new_commit --name-status > $git_diff
 if [ $(stat -c%s $git_diff) > 0 ]; then
@@ -192,6 +193,7 @@ if [ $(stat -c%s $git_diff) > 0 ]; then
 		esac
 	fi
 fi
+rm $git_diff
 echo "Complete"
 
 if [ ! y = "$save_pass" ]; then ftp_pass=""; fi

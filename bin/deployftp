@@ -20,8 +20,8 @@ ftp_user=""
 ftp_pass=""
 ftp_host=""
 deployed_commit=""
-if [ -e $case_dir/ftp_config ]; then
-	source $case_dir/ftp_config
+if [ -e $case_dir/deployftp.conf ]; then
+	source $case_dir/deployftp.conf
 fi
 if [ -z "$ftp_host" ]; then
 	read -p "FTP host: " ftp_host
@@ -187,18 +187,18 @@ if [ $(stat -c%s $git_diff) > 0 ]; then
 		echo -n "building FTP script"
 		push_ftp_list git $git_diff
 		read -p "Mark commit $new_commit as deployed? [Y/n]: " deploy_successful
-		case $deploy_successfull in
+		case $deploy_successful in
 			[nN]* ) ;;
 			* ) deployed_commit=$new_commit;;
 		esac
 	fi
 fi
-rm $git_diff
+# rm $git_diff
 echo "Complete"
 
 if [ ! y = "$save_pass" ]; then ftp_pass=""; fi
 
-cat > $case_dir/ftp_config <<END_CONFIG
+cat > $case_dir/deployftp.conf <<END_CONFIG
 ftp_host="$ftp_host"
 ftp_user="$ftp_user"
 ftp_pass="$ftp_pass"

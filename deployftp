@@ -5,7 +5,7 @@ NL_IFS=$'\n'
 IFS=$CR_IFS
 
 wd=`pwd`
-cases_dir=$(dirname $0)/../cases
+cases_dir=$(dirname $0)/cases
 cd $cases_dir
 read -ep "Case name: " case
 if [ -z "$case" ]; then
